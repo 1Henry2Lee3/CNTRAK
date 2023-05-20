@@ -1,0 +1,268 @@
+一、数据初步处理：scan_csv_to_table.文件
+
+1.1 list_file函数原型
+    list_file函数用于遍历文件夹下面的所有文件。在该php文件中，该函数被用来遍历train-2016-10文件夹中所有车次基本信息的csv文件。
+
+1.2 连接数据库
+    $conn以用户名postgres连接数据库postgres，密码为123
+
+1.3 创建all_trains表
+    all_trains表通过遍历文件夹train-2016-10得以填充。该表的结构为：
+tid         integer     not null    列车id
+train_num   varchar(10) not null    列车车次
+train_type  char(1)     not null    列车类型
+
+1.4 遍历文件夹，创建临时表trainxxxx并填充，填充all_trains
+    通过list_file函数，遍历train-2016-10文件夹下的所有csv文件。
+    在train-2016-10/x/xxxx.csv文件时，进行以下操作：
+    首先为xxxx.csv文件在数据库中创建一个临时的表：trainxxxx，数据结构如下
+tsid            integer     not null    train_station_id:每个车次中车站的id
+station         varchar(20) not null    车站名
+arr_time        varchar(10) not null    到达时间：首发站为空
+dep_time        varchar(10) not null    出发时间：终点站为空
+stop_time       varchar(10) not null    在该站的停留时间
+running_time    varchar(10) not null    运行时间
+mileage         varchar(10) not null    运行里程
+seat            varchar(20) not null    硬座/软座价位
+sleepery        varchar(20) not null    硬卧（上/中/下）价位
+sleeperr        varchar(20) not null    软卧（上/下）价位
+    在创建trainxxxx表成功后，将csv文件copy到trainxxxx文件中。注意：csv文件的分隔符为','且录入时需去除首行。
+    接下来进行all_trains的insert操作。通过获取xxxx.csv所在的子文件夹，对train_type数据进行录入。
+
+1.5 创建all_stations表，并从all-stations.txt文件中copy
+    all_stations表存储所有车站的信息，结构如下：
+sid             integer     not null    station_id:车站id
+station         varchar(20) not null    车站名称
+station_city    varchar(20) not null    车站所在的城市
+    在创建完成后，进行录入操作。分割符为','且不去除首行。
+
+1.6 在完成所有操作后，回收资源，并断开连接。
+
+1.7 总结：该文件结果
+1) all_trains：tid, train_num, train_type
+2) trainxxxx: tsid, station, arr_time, dep_time, stop_time, running_time, mileage, seat, sleepery, sleeperr
+3) all_stations: sid, station, station_city
+
+二、数据主要处理：make_table_trains.php
+
+2.1 连接数据库
+    $conn以用户名postgres连接数据库postgres，密码为123
+
+2.2 查询all_trains表
+    以$all_trains_res查询all_trains所有信息，并生成车次总数$trains_num，以供后续使用
+
+2.3 创建trains表
+    trains表基于trainxxxx，用于存储所有车次的一切信息。trains的信息首先需要由trainxxxx得到。该表的初步结构如下：
+train_id            integer     not null    车次id
+train_num           varchar(10) not null    列车车次
+train_type          char(1)     not null    车次类型
+train_station_id    integer     not null    每个车次中车站的id
+station             varchar(20) not null    车站名称
+arr_time            varchar(10) not null    到达时间
+dep_time            varchar(10) not null    出发时间
+stop_time           varchar(10) not null    停留时间
+running_time        varchar(10) not null    运行时间
+mileage             varchar(10) not null    运行里程
+seat                varchar(20) not null    硬座/软座价位
+sleepery            varchar(20) not null    硬卧价位
+sleeperr            varchar(20) not null    软卧价位
+
+2.4 通过all_trains表，将trainxxxx的文件插入到trains中
+    使用2.2的$all_trains_res结果，首先进行for循环遍历结果的每一行。提取每一行中的数据：train_id，train_num和train_type。
+    再根据train_num，通过$trainxxxx_res获得trainxxxx表的所有信息，并以$trainxxxx_num获取该表的行数。
+    随后使用for循环，根据trainxxxx的每行，对trains进行insert操作：对于相同的车次，train_id，train_num和train_type都不变，唯一变化的是来自trainxxxx的信息。
+
+2.5 修改trains表：加上station_id和station_city
+    在trains表中，已有车站名称station，此时根据表all_stations中的信息，加上station_id和station_city两列：
+station_id      integer     not null    车站id
+station_city    varchar(20) not null    车站所在的城市
+
+2.6 去除表中多余的空格：通过trim()函数
+    录入的trains，all_trains，all_stations三个表中，有录入多余空格的现象，需要通过trim()函数进行去除。
+
+2.7 更新trains表中的station_id和station_city
+    首先通过$trains_res取得trains表中的所有信息，并生成记录总数$trains_num，用于遍历使用。
+    对于trains表的每一行，首先获取车站的名称$station_name。然后，在all_stations表中进行查找，以$find_station_res输出车站名称对应的结果（通常为1行）。输出对应的$station_id和$station_city，并更新到trains表中。
+
+2.8 释放所有资源，断开连接
+
+2.9 总结：该文件结果
+1) 更新的trains: train_id, train_num, train_type, train_station_id, station, arr_time, dep_time, stop_time, running_time, mileage, seat, sleepery, sleeperr, station_id, station_city
+2) 所有表去除空格
+
+三、生成ticketxxxx：make_ticketxxxx.php
+
+3.1 连接数据库
+    $conn以用户名postgres连接数据库postgres，密码为123
+
+3.2 查询all_trains表
+    查询all_trains表的所有信息，并返回列车总数目$all_trains_res_num。
+
+3.3 为trains表加上station_valid列
+    station_valid用于存储每个车次中，每个车站是否办理客运业务。若不办理，该车站对应的票价全为空。
+
+3.4 为all_trains表加上seat_type_en列
+    每个车次中，有些坐席是没有的。通过设置seat_type_en列，可以显示该种坐席在该车次中是否存在。
+
+3.5 遍历所有车次，为每个车次创建ticketxxxx表，并录入seat_type_en到all_trains表中，录入station_valid到trains表中，录入ticketxxxx表。
+    首先创建ticketxxxx表，该表的结构如下：
+ticket_date             varchar(20) 车票日期
+ticket_start_station_id integer     车票起始车站的id
+ticket_end_station_id   integer     车票终点车站的id
+seaty                   integer     车票硬座数量
+seatr                   integer     车票软座数量
+sleeperys               integer     车票硬卧上数量
+sleeperyz               integer     车票硬卧中数量
+sleeperyx               integer     车票硬卧下数量
+sleeperrs               integer     车票软卧上数量
+sleeperrx               integer     车票软卧下数量
+    在创建ticketxxxx表成功后，从trains表中，通过$trains_res输出trains表中，所有车次号为xxxx的信息，让结果按照train_station_id升序排列，并返回车站总数$train_res_num。
+    现在，按照起始车站id为1，终到车站id为$train_res_num遍历结果。
+    1) 创建seatyarr，seatrarr，sleeperysarr，sleeperyzarr，sleeperyxarr，sleeperrsarr，sleeperrxarr数组，遍历结果中有关票价的字符串，通过explode()函数进行分割，并分别存储到各个数组当中。
+    2) 根据获得的票价数组，生成seat_type_en和station_valid数组。对于seat_type_en，遍历对于数组的所有元素，若存在非空，则设置en为1；对于station_valid，若为第一个车站，则默认为1，否则遍历该车站对于所有票价数组的元素，若全为空，则设置为0，否则为1.
+    3) 根据en，设置车票数量：若en为1，则设置车票数量为5。
+    4) 插入数据到ticketxxxx表中。对于从明天起的所有15天，依次插入日期、起始站id=1、终到站id=$train_res_num、各种座位的数量
+    5) 将valid更新到trains对应车站的行中
+    6) 将en更新到all_trains对应的车次的行中
+
+3.6 释放所有资源，断开连接
+
+3.7 总结：该文件结果
+1) ticketxxxx: ticket_date, ticket_start_station_id, ticket_end_station_id, 各种座位的车票数
+2) 更新的trains表：除了train_id, train_num, train_type, train_station_id, station, arr_time, dep_time, stop_time, running_time, mileage, seat, sleepery, sleeperr, station_id, station_city，还加上了station_valid列
+3) 更新的all_trains表：加上了seat_type_en列
+
+四、在完成上面所有步骤后，所有表的结构：
+4.1 all_stations:   sid, station, station_city
+4.2 all_trains:     tid, train_num, train_type, seat_type_en
+4.3 trains:         train_id, train_num, train_type, train_station_id, station, arr_time, dep_time, stop_time, running_time, mileage, seat, sleepery, sleeperr, station_id, station_city, station_valid
+4.4 ticketxxxx:     ticket_date, ticket_start_station_id, ticket_end_station_id, 各种座位的车票数
+4.5 trainxxxx:      废弃
+表总数：1+1+1+5505+5505=11013，未加上后续需求
+
+五、具体查询要求
+
+5.1 记录列车信息
+1) 车站：始发站、经停站、终点站
+2) 发车时间、到达时间
+3) 票价
+    需求分析：上述在csv文件中已经全部给出，应该统一存放在trains表当中。
+    修改意见：trains表中的票价还是初始的字符串形式，需要通过explode()分割。可以加上新列，用来分别表示所有席位的票价---在make_ticketxxxx.php中进行。
+
+5.2 记录列车座位情况
+1) 每次列车、每类座位、每天有5个
+2) 一个座位可以售给两个旅行段不重叠的乘客
+    需求分析：可以通过ticketxxxx表，存储同一车次中，相同起始站和终点站的票的所有类型的车票数目。
+    修改意见：加上一个用于生成订单的order_process.php文件。用户下单后，首先搜寻对应车次、对应日期、车票区间包含于order区间的所有车票，并从中选取一个车票进行分割操作。分割方法如下：对于对应的席位，a-d车票的数量减1，并生成一个a-b和c-d的车票。
+
+5.3 记录乘客信息
+1) 注册：每位乘客在使用之前需要注册，提供下述信息：姓名、手机号(11号整数)、用户名、密码
+2) 登录：用户需要输入用户名登录。登录后，显示欢迎信息网页，并显示查询车次、查询两地间车次、管理订单3个超链接用于跳转。
+    需求分析：通过加上users表，存储用户信息
+    修改意见：新建注册页面，在登录首页加上注册页面链接。注册成功后返回登录界面，登陆成功后，跳转到欢迎界面。
+
+5.4 查询车次
+1) 网页输入：车次号、日期
+2) 显示该车次的所有信息：静态信息：始发站、经停站、终到站、每站发车时间和到达时间、票价；动态信息：从始发站到当前站的每站余票数量
+3) 点击每站余票，跳转到订票界面，订购从始发站到被点击站对应席位的票。
+    需求分析：通过query_train_num.php实现。车次信息通过访问trains表实现，余票信息通过访问ticketxxxx表实现。
+    修改意见：trains中的时间和日期，需改变为日期和时间类型：date日期xxxx-xx-xx、time类型xx:xx:xx，timestamp类型xxxx-xx-xx xx:xx:xx、interval类型。把录入的ticketxxxx中的ticket_date也改为日期类型。
+
+5.5 查询两地间车次
+1) 网页输入：出发地城市名、到达地城市名、出发日期（默认为第二天）、出发时间（默认为00:00）
+2) 显示信息：
+    2.1) 表格1：两地之间直达列车。
+    发车时间>=给定时间
+    显示列车信息和余票信息
+    通过点击余票，跳转到订票界面。
+    2.2) 表格2：两地之间换乘一次的列车组合
+    发车时间>=给定时间
+    换乘地为同一城市：若同站：经停时间为1h-4h；否则为2h-4h
+    显示两个列车信息和总余票信息（两列车余票最小值）
+    点击余票，跳转到订票界面。
+3) 每个表格最多显示20行，排序：票价、行程总时间、起始时间
+    需求分析：通过query_train_between_cities.php实现。
+    修改意见：无。
+
+5.6 查询返程信息
+1) 在查询两地间车次页面，加上一个返程查询连接。要求如下：
+    自动填充返程信息：出发地城市名、到达地城市名
+    出发日期：默认为正向行程的次日
+    出发时间：默认为00:00
+2) 和5.5一样，显示两个表格
+    需求分析：在query_train_between_cities.php中实现，直接修改参数即可。
+
+5.7 预订车次座位
+1) 显示车次（若有换乘，需一起显示）：出发日期、时间、车站，到达日期、时间、车站，座位类型、车票价格
+2) 生成订票费：5*车次数
+3) 生成总票价
+4) 用户点击确认时，生成订单：记录到用户历史订单中，并修改车次对应座位余票数量。订单包含：订单号、车次、出发、到达、座位类型、票价、日期时间
+5) 用户点击取消，则返回登录首页
+    需求分析：该需求通过order_ticket.php实现。通过接收上层php传递过来的参数，实现订票操作。（是否加上联程订票php文件？）在用户点击确认后，跳转到order_process.php，进行订单处理操作。
+
+5.8 管理订单
+1) 保存每位乘客的历史订单
+2) 查询订单：
+    给定出发日期范围，显示订单列表
+    订单信息：订单号、日期、出发到达站、总票价、状态
+    提供链接，点击时显示订单具体信息。若包含2个车次，分别显示每个车次信息。
+3) 删除订单：
+    在订单列表中，点击链接可以取消订单。
+    此时订单仍将显示，但注明取消
+    并更新车次座位余票数量。
+    需求分析：后端通过表orders实现，前端加上order_manage.php，查看用户订单。点击订单详细信息链接后，详细显示信息。点击删除链接后，通过order_process.php实现车票更新。（注意：可以合并车票！！！）
+
+5.9 管理员界面
+1) 系统固定一个admin用户作为管理员
+2) 在admin登录后，显示不同的首页
+3) admin首页显示：总订单数、总票价（不包括已取消）、热点车次、注册用户列表
+4) 通过点击注册用户、查看用户订单
+    需求分析：前端通过admin_home_page.php实现。后端查看总订单数和总票价，通过查询orders表实现。热点车次通过查询train_order表实现（新设立）。通过遍历users查看用户，点击后跳转order_manage.php加上只读模式来实现。---修改为hostory_order.php?user=$user
+
+六、新需求分析---前端
+
+6.1 登录和注册---login.php和register.php
+    在login界面除了login.php之外，还需添加到register.php的链接。register页面中，输入姓名、手机号、用户名和密码，在存储到users表中后，跳转回login.php进行登录。
+
+6.2 用户首页---home_page.php
+    在login.php界面登录成功后，传值$user给home_page.php。在用户首页，显示欢迎信息，并加载前往查询车次query_train_num.php?user=$user、查询两地间车次query_train_between_cities.php?user=$user、个人订单管理order_manage.php?user=$user。
+
+6.3 管理员首页---admin_home_page.php
+    在login.php界面以管理员账号登录后，直接进入admin_home_page.php。该网页显示如下信息：
+1) 未取消的总订单数和总票价：查询orders表，通过select prices from orders where status=1实现查询，并求总行数---总订单数，使用sum()为票价求和。
+2) 热点车次：查询train_order表---train_id, train_num, order_num。并为结果降序，limit10。
+3) 注册用户列表：通过查询users实现。点击用户，跳转到history_ticket.php?user=$user实现。
+
+6.4 按照车次查询---query_train_num.php
+    在该页面，输入车次和日期（注意为xxxx-xx-xx格式，默认为明天）。根据输入，显示如下结果：
+1) 该车次所有信息：查询trains表select * from trains where train_num='$train_num' order by train_station_id asc;结果通过table输出。
+2) 该车次在该日期的余票信息：从第二个车站到终到站，依次查询ticketxxxx表：select * from ticketxxxx where date='$date' and ticket_start_station_id <= 1 and ticket_end_station_id >= end_station_id;注意：可能有多行结果，此时需要取总求和后，再输出。若余票不为0，则输出超链接order_ticket.php?user=$user&date=$date&start_station_id=$start_station_id&end_station_id=$end_station_id&seat_type=$seat_type转到订单确认页面。
+
+6.5 按照城市查询---query_train_between_cities.php
+    在该页面，用户输入车次、日期和时间（默认为00:00）。根据输入，显示如下结果：
+1) 两地之间的直达列车，要求发车时间>=给定时间。
+首先查询all_stations生成两个结果：出发城市的所有车站、到达城市的所有车。再通过双层循环，遍历所有可能。具体查询方法为：
+    查询两张表，要求结果车次相同、第一张表出发时间>=给定时间、第一张表车次车站id<第二张表车次车站id：select * from trains as t1, trains as t2 where t1.train_num = t2.train_num and t1.dep_time >= $time and t1.train_station_id < t2.train_station_id order by (t2.??price - t1.??price) asc, (t2.running_time - t1.running_time) asc, t1.dep_time asc limit 20;
+输出结果后，根据车次和日期查询ticketxxxx，最后生成table。并点击非零余票，进行订单预订界面
+2) 两地之间的非直达列车，要求发车时间>=给定时间、换乘地为同一城市：若同站：经停时间为1h-4h；否则为2h-4h。
+查询四张trains表，要求：第一二张表的车次相同、第三四张表的车次相同、第一张表的出发时间>=给定时间、第二张表车站所在城市=第三张表车站所在城市、第一张表车次车站id<第二张表车次车站id、第三张表车次车站id<第四张表车次车站id。除此之外，若第二张表车站=第三张表车站，则第三张表dep_time-第二张表arr_time在1-4小时之间；若第二张表车站!=第三张表车站，则第三张表dep_time-第二张表arr_time在2-4小时之间---使用集合的union方法：
+(select * from trains as t1, trains as t2, trains as t3, trains as t4 where t1.train_id = t2.train_id and t3.train_id = t4.train_id and t1.dep_time >= $time and t2.station_city = t3.station_city and t1.train_station_id < t2.train_station_id and t3.train_station_id < t4.train_station_id and t2.station_id = t3.station_id and (t3.dep_time - t2.arr_time) >= interval '1 hour' and (t3.dep_time - t2.arr_time) <= interval '4 hours')
+union
+(select * from trains as t1, trains as t2, trains as t3, trains as t4 where t1.train_id = t2.train_id and t3.train_id = t4.train_id and t1.dep_time >= $time and t2.station_city = t3.station_city and t1.train_station_id < t2.train_station_id and t3.train_station_id < t4.train_station_id and t2.station_id != t3.station_id and (t3.dep_time - t2.arr_time) >= interval '2 hour' and (t3.dep_time - t2.arr_time) <= interval '4 hours')
+order by ((t2.??price - t1.??price)+(t4.??price - t3.??price)) asc, ((t2.running_time - t1.running_time)+(t3.dep_time - t2.arr_time)+(t4.running_time - t3.running_time)) asc, t1.dep_time asc limit 20;
+输出结果后，根据车次和日期查询ticketxxxx和ticketyyyy，最后生成table。并点击非零余票，进行联程订单预订界面。
+
+6.6 用户订单管理---order_manage.php
+    在该页面，用户输入出发日期范围，系统显示订单列表（包括已经取消的）。显示的订单信息如下：
+1) 订单号、日期、出发到达站、总票价、状态：通过直接查询orders表实现：
+select * from orders where user=$user and date>=$date order by oid asc;
+2) 用户点击订单，可以显示订单的具体信息。若包含两个车次，则分别显示每个车次的信息：
+显示订单的详细界面，可以新加一个php文件，用于订单详细显示：order_info.php?oid=$oid
+3) 用户可以点击链接，取消未被取消的订单（注意：此时的订单时间必须晚于用户想要取消时的时间）。点击过后，用户界面显示订单取消：
+点击链接后，跳转到order_process.php文件，访问orders，将对应订单的status进行修改，并修改对应的ticketxxxx，在进行处理时，可以对相同座位的进行车票拼接操作---首尾车站id相同，则进行拼接。
+
+6.7 用户历史订单---history_order.php?user=$user
+    该php文件，用于查看用户的历史订单。从orders表中选取用户名为$user的所有订单，将结果按照table格式输出。
+
+七、文件组织
+7.1 从csv和txt录入表格：

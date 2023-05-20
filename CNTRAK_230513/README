@@ -1,0 +1,41 @@
+1. login.php, register.php
+after login, user goto the home_page.php.
+if not registered, click to register.php
+
+2. home_page.php
+welcome page.
+query train number:---query_train_num.php
+query train between cities:---query_train_between_cities.php
+manage order:---user_order_manage.php
+
+2.1 query_train_num.php
+query train by train_num.
+click the remain page to order_ticket.php
+
+2.2 query_train_between_cities.php
+query train between start city and end city.
+click the direct route remain ticket to order_ticket.php
+click the indirect routes remain ticket to order_ticket_mul.php
+
+2.3 user_order_manage.php
+show the orders of the user.
+click 'cancel' to cancel_order.php
+
+3.1 order_ticket.php
+show the information of the order.
+you can choose the seat_type here.
+click 'OK' to process/order_process.php
+
+3.2 order_ticket_mul.php
+show the information of the order.
+you can choose the seat_type here.
+click 'OK' to process/mul_order_process.php
+
+4. admin_home_page.php
+show the total uncancelled order_num and prices.
+show the hot 10 trains using order_trains table
+show all the registered users.
+click to history_orders.php
+
+5. history_orders.php
+show the historical orders of one user.

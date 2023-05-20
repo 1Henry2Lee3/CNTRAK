@@ -1,0 +1,30 @@
+1. scan csv to table
+
+2. make_table_trains
+
+3. make_ticketxxxx
+
+4. initial order_trains
+
+5. initial orders
+
+6. initial users
+
+---
+7. order_process
+used when order_ticket.php sends data.
+update ticketxxxx
+insert into orders
+update/insert order_trains
+
+8. mul_order_process
+used when order_ticket_mul.php sends data.
+update ticketxxxx of two trains
+insert 2 datas into orders
+update/insert order_trains
+
+9. cancel_order
+used when user at user_order_manage.php cancels the order.
+update ticketxxxx
+update orders set status 0
+update order_trains
